@@ -127,22 +127,28 @@ func beginDownloadKicBaseImage(g *errgroup.Group, cc *config.ClusterConfig, down
 		// If we end up using a fallback image, notify the user
 		defer func() {
 			if finalImg != "" && finalImg != baseImg {
-				out.WarningT(fmt.Sprintf("minikube was unable to download %s, but successfully downloaded %s as a fallback image", image.Tag(baseImg), image.Tag(finalImg)))
+				out.WarningT(fmt.Sprintf("minikube was unable to download %s, but successfully downloaded %s as a fallback image", baseImg, finalImg))
 				cc.KicBaseImage = finalImg
 			}
 		}()
 		for _, img := range append([]string{baseImg}, kic.FallbackImages...) {
-			if err := image.LoadFromTarball(driver.Docker, img); err == nil {
-				klog.Infof("successfully loaded %s from cached tarball", img)
+			imageFromTar:=image.Tag(img)
+			if err := image.LoadFromTarball(driver.Docker, imageFromTar); err == nil {
+				klog.Infof("successfully loaded %s from cached tarball", imageFromTar)
 				// strip the digest from the img before saving it in the config
 				// because loading an image from tarball to daemon doesn't load the digest
-				finalImg = img
+				finalImg = imageFromTar
 				return nil
 			}
 			klog.Infof("Downloading %s to local daemon", img)
 			err := image.WriteImageToDaemon(img)
 			if err == nil {
 				klog.Infof("successfully downloaded %s", img)
+				if err := image.SaveToDir([]string{imageFromTar}, constants.ImageCacheDir); err == nil {
+					klog.Infof("successfully saved %s as a tarball", imageFromTar)
+					finalImg = imageFromTar
+					return nil
+				}
 				finalImg = img
 				return nil
 			}
